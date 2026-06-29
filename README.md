@@ -58,6 +58,53 @@ Ini membuat import bekerja identik baik dijalankan dari root project
 maupun dari dalam folder `api/` — sudah ditest kedua caranya secara
 end-to-end (HTTP request asli, bukan cuma cek `import` berhasil).
 
+## PENTING: Header dekoratif berulang dan teks tersembunyi di belakang gambar
+
+Banyak manual book/dokumen profesional punya header letterhead yang sama
+persis di setiap halaman (logo + judul perusahaan dengan efek gradient/
+shadow). `pdf2docx` punya DUA limitasi yang saling bertumpuk untuk pola ini:
+
+1. **Tidak ada deteksi header/footer sama sekali.** Source code-nya sendiri
+   mengonfirmasi ini (`pdf2docx/page/Pages.py`, method `_parse_document`,
+   adalah `# TODO: return '', ''` yang belum pernah diimplementasikan).
+   Setiap halaman diperlakukan sebagai layout yang sepenuhnya independen.
+2. **Tidak memodelkan z-order/layering.** Kalau ada teks polos (untuk
+   pencarian/aksesibilitas) yang ditumpuk gambar dekoratif di atasnya
+   (pola umum dari Canva/PowerPoint export), `pdf2docx` mengekstrak
+   teks itu apa adanya tanpa tahu bahwa secara visual teks itu tidak
+   pernah terlihat — hasilnya teks besar yang tidak pernah ada di PDF
+   asli muncul menutupi konten lain di DOCX.
+
+Akibat gabungan keduanya: rekonstruksi header yang SAMA PERSIS di PDF bisa
+menghasilkan tampilan berbeda-beda di tiap halaman DOCX (kadang rapi, kadang
+hurufnya terbelah-belah dengan spasi aneh, kadang tertumpuk gambar lain) —
+tergantung berapa banyak gambar/elemen LAIN yang ada di halaman itu,
+sesuatu yang sama sekali tidak relevan secara visual tapi mempengaruhi
+heuristik clustering internal `pdf2docx`.
+
+**Fix (`lib/pdf_text_filter.py`, dipanggil otomatis di awal
+`convert_pdf_to_docx`):**
+
+1. `strip_image_obscured_text()` — menghapus span teks yang >50% area-nya
+   tertutup gambar di halaman yang sama (heuristik: ini hampir pasti teks
+   fallback yang tidak dimaksudkan terlihat).
+2. `flatten_repeated_header()` — mendeteksi region di 90pt teratas halaman
+   yang render visualnya identik byte-for-byte di ≥3 halaman, lalu
+   mengganti SEMUA isi region itu (gambar, teks, vector graphic apa pun)
+   dengan SATU gambar PNG hasil render bersih, ditempel di posisi yang
+   sama di setiap halaman. Satu gambar flat tidak punya ambiguitas
+   internal untuk direkonstruksi ulang secara salah.
+
+Kedua fix ini best-effort — kalau gagal karena alasan apa pun (PDF yang
+tidak biasa, dll), pipeline tetap lanjut dengan PDF original tanpa
+fix tersebut, bukan menggagalkan seluruh konversi.
+
+**Yang TIDAK diperbaiki oleh fix ini**: Table of Contents dengan tab-leader
+(titik-titik penyambung "LOGIN .......... 4") masih bisa terbalik urutannya
+("4 LOGIN") di hasil DOCX — ini limitasi struktural berbeda dari `pdf2docx`
+soal cara dia membaca urutan teks dengan leader characters, belum ada
+solusi yang ditemukan untuk ini.
+
 ## PENTING: maxDuration diatur lewat Dashboard, BUKAN vercel.json
 
 `vercel.json` di project ini sengaja dikosongkan (`{}`). Sempat dicoba isi

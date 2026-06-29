@@ -29,6 +29,7 @@ from pdf2docx import Converter
 
 from pdf_detect import detect_needs_ocr
 from pdf_ocr import ocr_pdf
+from pdf_text_filter import flatten_repeated_header, strip_image_obscured_text
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,38 @@ def convert_pdf_to_docx(pdf_bytes: bytes, ocr_mode: str = "auto") -> bytes:
     """
     if ocr_mode not in ("auto", "force", "off"):
         raise ConversionError(f"ocr_mode tidak dikenal: {ocr_mode}")
+
+    # Strip decorative-image-covers-fallback-text spans (e.g. a styled
+    # gradient/shadow logo header with a plain black copy of the same
+    # text hidden underneath it for searchability) BEFORE OCR
+    # detection runs. Doing this first means detect_needs_ocr never
+    # sees the now-removed hidden text, so a page that's otherwise
+    # scanned-image-only doesn't get miscounted as "has text" just
+    # because of one decorative header span that was about to be
+    # stripped anyway.
+    try:
+        pdf_bytes = strip_image_obscured_text(pdf_bytes)
+    except Exception:
+        # This is a best-effort visual-quality improvement, not a
+        # correctness requirement -- if it fails for any reason (e.g.
+        # a malformed PDF that confuses the image/text inspection),
+        # fall through and convert the original bytes rather than
+        # blocking the whole conversion over a cosmetic issue.
+        logger.exception("strip_image_obscured_text failed, continuing with original PDF")
+
+    # Collapses a repeated letterhead-style header (if one is
+    # detected) into a single flat image per page, working around
+    # pdf2docx's page-independent layout reconstruction producing
+    # inconsistent results for the same header depending on how much
+    # other content shares the page (see pdf_text_filter.py's
+    # flatten_repeated_header docstring for the full investigation).
+    # Runs AFTER strip_image_obscured_text so the hidden-text removal
+    # doesn't get short-circuited by the header region already being a
+    # single flattened image with no separate text span to find.
+    try:
+        pdf_bytes = flatten_repeated_header(pdf_bytes)
+    except Exception:
+        logger.exception("flatten_repeated_header failed, continuing without it")
 
     detection = detect_needs_ocr(pdf_bytes)
     total_pages = detection["total_pages"]
