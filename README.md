@@ -36,6 +36,28 @@ pdf-to-word-backend/
 └── README.md
 ```
 
+## PENTING: Import sibling module butuh sys.path manipulation
+
+`api/main.py` melakukan `sys.path.insert(0, ...)` di baris paling atas
+sebelum import `pdf_to_word`, `pdf_detect`, dan `pdf_ocr`. Ini WAJIB ada,
+jangan dihapus untuk "merapikan" kode:
+
+Sempat terjadi di deployment nyata: build berhasil, tapi runtime crash dengan
+`ModuleNotFoundError: No module named 'pdf_to_word'`. Sebabnya: Vercel
+menjalankan `api/main.py` lewat `importlib` dengan absolute file path,
+TANPA menambahkan folder `api/` ke `sys.path` dan tanpa menjadikan `api/`
+sebuah package (tidak ada `__init__.py`, sesuai konvensi resmi Vercel
+sendiri). Plain `from pdf_to_word import ...` bekerja saat dev lokal
+(karena `uvicorn main:app` biasanya dijalankan DARI DALAM folder `api/`,
+sehingga foldernya otomatis masuk sys.path) tapi gagal total di Vercel,
+yang menjalankan dari root project.
+
+Fix-nya: `sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))`
+di baris paling atas `main.py`, sebelum import sibling module manapun.
+Ini membuat import bekerja identik baik dijalankan dari root project
+maupun dari dalam folder `api/` — sudah ditest kedua caranya secara
+end-to-end (HTTP request asli, bukan cuma cek `import` berhasil).
+
 ## PENTING: maxDuration diatur lewat Dashboard, BUKAN vercel.json
 
 `vercel.json` di project ini sengaja dikosongkan (`{}`). Sempat dicoba isi

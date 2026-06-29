@@ -23,6 +23,24 @@ them anymore -- whatever path is requested is the path FastAPI sees.
 """
 import logging
 import os
+import sys
+
+# Vercel's Python runtime imports this file directly via importlib with
+# an absolute file path (confirmed from a real deployment traceback:
+# `File "/var/task/api/main.py"` imported through
+# `_vendor/vercel_runtime/resolver.py`'s `import_module`), NOT by
+# running with `api/` as the working directory and not as part of a
+# package (`api/` has no `__init__.py`, and isn't expected to since
+# Vercel's own docs example just drops files straight into `api/`).
+# That means a plain `from pdf_to_word import ...` -- which works fine
+# locally, since `uvicorn main:app` is normally launched FROM the
+# `api/` directory -- fails on Vercel with `ModuleNotFoundError: No
+# module named 'pdf_to_word'`, because the actual interpreter's cwd
+# and sys.path don't include this file's own directory by default
+# under that import mechanism. Explicitly adding this file's directory
+# to sys.path makes the sibling-module imports below work identically
+# in both environments, regardless of how the interpreter was invoked.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
