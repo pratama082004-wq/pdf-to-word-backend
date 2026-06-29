@@ -1,0 +1,33 @@
+[project]
+name = "pdf-to-word-backend"
+version = "0.1.0"
+description = "Backend PDF to Word + OCR untuk winpdf"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.117.1",
+    "python-multipart>=0.0.9",
+    "pdf2docx>=0.5.13",
+    "PyMuPDF>=1.26.7",
+    "docxcompose>=2.2.0",
+    "rapidocr>=3.9.0",
+    "onnxruntime>=1.18.0",
+    "numpy>=1.17.2",
+    "opencv-python-headless>=4.5.1.48",
+]
+
+# rapidocr hard-requires the package named "opencv_python" (the full,
+# GUI-enabled build), but the actual `cv2` module it imports is
+# satisfied equally well by opencv-python-headless (no GUI bindings,
+# ~150MB smaller once both opencv_python.libs and the duplicate cv2
+# native binary are accounted for). pip's resolver treats the two as
+# unrelated packages and happily installs both side by side -- this
+# override tells uv (Vercel's build resolver, confirmed in build logs:
+# "Using uv 0.10.11") to treat the opencv_python requirement as
+# satisfied without ever installing it, via an environment marker
+# that's always false. Discovered the hard way: a build that installed
+# both opencv variants came in at 526MB, over Vercel's 500MB Python
+# function limit; removing the duplicate brought it down to ~420MB.
+[tool.uv]
+override-dependencies = [
+    "opencv-python ; sys_platform == 'never'"
+]

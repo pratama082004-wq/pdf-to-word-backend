@@ -81,13 +81,39 @@ frontend akan mengarah ke `http://localhost:8000` saat development lokal
 
 ## Catatan Ukuran & Limit
 
-- Total dependency (`pdf2docx`, `PyMuPDF`, `rapidocr`, `docxcompose`, dll) sekitar
-  ~301MB — di bawah limit 500MB Vercel Python function, tapi marginnya tidak besar.
-  Kalau menambah dependency baru, cek ulang total ukurannya.
-- `maxDuration` diset 120 detik di `vercel.json` — dokumen dengan banyak halaman
-  hasil scan (perlu OCR) bisa makan waktu lama; sesuaikan kalau perlu lebih,
-  tapi perhatikan limit plan Vercel kamu (Hobby plan punya limit durasi function
-  yang lebih rendah dari Pro).
-- Model OCR (RapidOCR) di-download otomatis saat pertama kali dipanggil (disimpan
-  di `/tmp`, yang writable di Vercel tapi tidak persisten antar cold start) —
-  artinya request pertama setelah idle lama akan sedikit lebih lambat.
+- **Bundle size sempat melebihi limit 500MB Vercel** (526.61MB) karena `rapidocr`
+  meminta paket `opencv_python` (versi penuh, dengan GUI bindings) sementara
+  `pdf2docx`/dependency lain menarik `opencv-python-headless` juga — pip
+  menginstall KEDUANYA karena dianggap dua paket berbeda, padahal isinya
+  konflik modul `cv2` yang sama. Fix-nya ada di `pyproject.toml`, bagian
+  `[tool.uv] override-dependencies` — memberi tahu resolver `uv` (yang dipakai
+  Vercel untuk build Python) untuk menganggap `opencv_python` "terpenuhi"
+  tanpa pernah menginstallnya, sehingga hanya `opencv-python-headless` yang
+  benar-benar terpasang. Ini mengurangi total dependency dari ~587MB ke ~473MB
+  (diukur di sandbox testing; rasio efisiensi Vercel yang sebenarnya
+  cenderung sedikit lebih baik dari sandbox ini berdasarkan observasi
+  sebelumnya, tapi jangan asumsikan otomatis lebih kecil — selalu cek log
+  build aktual setelah deploy).
+- **PENTING kalau menambah/upgrade dependency baru**: jangan pin
+  `opencv-python-headless` ke versi lama untuk hemat ukuran tanpa testing
+  penuh — versi `opencv-python-headless==4.8.0.76` misalnya dikompilasi untuk
+  NumPy 1.x dan akan gagal total (`ImportError: numpy.core.multiarray failed
+  to import`) begitu `numpy>=2.0` ikut terinstall. Selalu jalankan
+  `convert_pdf_to_docx()` end-to-end (bukan cuma cek `import` berhasil)
+  setelah mengubah versi dependency manapun di sini.
+- `excludeFiles` di `vercel.json` membuang folder `tests/`, file `.pyi`
+  (type stubs), `*.dist-info` (metadata pip), dan `examples/` dari SELURUH
+  dependency yang ter-bundle, bukan cuma kode kita sendiri — dampaknya kecil
+  (~1MB) tapi tidak ada downside yang ditemukan, sudah ditest end-to-end
+  dengan folder-folder ini dihapus secara manual dan hasil konversi tetap
+  identik.
+- `maxDuration` diset 120 detik di `vercel.json` — dokumen dengan banyak
+  halaman hasil scan (perlu OCR) bisa makan waktu lama; sesuaikan kalau perlu
+  lebih, tapi perhatikan limit plan Vercel kamu (Hobby plan punya limit durasi
+  function yang lebih rendah dari Pro).
+- Model OCR (RapidOCR varian default/"small") sudah ikut ter-bundle di dalam
+  package `rapidocr` itu sendiri (~31MB, lihat `rapidocr/models/*.onnx`),
+  TIDAK di-download saat runtime — beda dari asumsi awal project ini. Model
+  varian lain (`medium`/`server`) baru di-download on-demand dari
+  modelscope.cn saat pertama dipanggil, dan domain itu mungkin diblokir di
+  beberapa environment sandbox/network terbatas.
