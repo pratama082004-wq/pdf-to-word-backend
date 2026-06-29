@@ -1,0 +1,7 @@
+fastapi>=0.117.1
+python-multipart>=0.0.9
+pdf2docx>=0.5.13
+PyMuPDF>=1.26.7
+docxcompose>=2.2.0
+rapidocr>=3.9.0
+numpy>=1.17.2
