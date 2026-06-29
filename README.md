@@ -13,6 +13,29 @@ ternyata tidak bisa diakses, backend ini dijadikan project Vercel terpisah yang
 dipanggil lewat HTTPS biasa dari frontend. Ini pendekatan yang lebih umum dan
 pasti didukung di semua plan Vercel.
 
+## Struktur Folder
+
+Semua kode Python ada di dalam folder `api/` — ini bukan pilihan gaya, tapi
+syarat wajib dari Vercel: <cite>untuk semua runtime resmi yang didukung,
+satu-satunya syarat adalah membuat direktori `api` di root project, lalu
+meletakkan Vercel function di dalamnya</cite>. Versi awal project ini sempat
+meletakkan `main.py` di root (bukan di `api/`), yang menyebabkan build gagal
+dengan error: `The pattern "main.py" defined in functions doesn't match any
+Serverless Functions inside the api directory`. Kalau menambah file Python
+baru, taruh di dalam `api/` juga.
+
+```
+pdf-to-word-backend/
+├── api/
+│   ├── main.py          ← entrypoint, harus berisi variabel `app`
+│   ├── pdf_detect.py
+│   ├── pdf_ocr.py
+│   └── pdf_to_word.py
+├── requirements.txt
+├── vercel.json
+└── README.md
+```
+
 ## Cara Deploy
 
 1. Push folder ini (`pdf-to-word-backend/`) sebagai repo GitHub terpisah
@@ -49,7 +72,7 @@ berlaku ke deployment yang sudah ada, perlu trigger build baru — bisa lewat
 ```bash
 pip install -r requirements.txt --break-system-packages
 pip install uvicorn --break-system-packages
-uvicorn main:app --reload --port 8000
+cd api && uvicorn main:app --reload --port 8000
 ```
 
 Lalu jalankan project Next.js seperti biasa (`npm run dev`) — secara default,
