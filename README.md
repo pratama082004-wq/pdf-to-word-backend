@@ -36,6 +36,34 @@ pdf-to-word-backend/
 └── README.md
 ```
 
+## PENTING: maxDuration diatur lewat Dashboard, BUKAN vercel.json
+
+`vercel.json` di project ini sengaja dikosongkan (`{}`). Sempat dicoba isi
+`functions.api/main.py.maxDuration` dan variasinya (`api/*.py`, `api/**`),
+SEMUANYA gagal build dengan error: `The pattern "..." defined in functions
+doesn't match any Serverless Functions inside the api directory` — padahal
+struktur foldernya sudah benar (dikonfirmasi langsung di GitHub). Begitu
+`vercel.json` dikosongkan total, build langsung berhasil.
+
+Ini ternyata bukan kesalahan konfigurasi di project ini — ada laporan
+pengguna lain dengan masalah identik di forum komunitas Vercel, dan
+dokumentasi resmi Vercel sendiri menyebutkan cara yang benar untuk set
+`maxDuration` tanpa lewat `vercel.json` sama sekali:
+
+1. Buka dashboard Vercel → pilih project ini
+2. Settings → **Functions** (di sidebar kiri)
+3. Cari bagian **Function Max Duration**
+4. Ubah **Default Max Duration** ke nilai yang dibutuhkan (misal 120 detik
+   untuk dokumen dengan banyak halaman OCR)
+5. Save
+
+Catatan plan: Hobby plan defaultnya 10 detik, Pro/Enterprise 15 detik — kedua
+itu kemungkinan TIDAK CUKUP untuk dokumen multi-halaman dengan OCR. Naikkan
+ke setidaknya 60-120 detik lewat dashboard seperti di atas. Kalau perlu lebih
+dari 800 detik, baru itu butuh konfigurasi per-function eksplisit (bisa balik
+butuh `vercel.json`, tapi itu kasus ekstrem yang seharusnya tidak terjadi
+untuk ukuran dokumen wajar).
+
 ## Cara Deploy
 
 1. Push folder ini (`pdf-to-word-backend/`) sebagai repo GitHub terpisah
