@@ -29,7 +29,12 @@ from pdf2docx import Converter
 
 from pdf_detect import detect_needs_ocr
 from pdf_ocr import ocr_pdf
-from pdf_text_filter import flatten_repeated_header, strip_image_obscured_text
+from pdf_text_filter import (
+    flatten_callout_annotations,
+    flatten_mockup_dialogs,
+    flatten_repeated_header,
+    strip_image_obscured_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,55 @@ def convert_pdf_to_docx(pdf_bytes: bytes, ocr_mode: str = "auto") -> bytes:
         pdf_bytes = flatten_repeated_header(pdf_bytes)
     except Exception:
         logger.exception("flatten_repeated_header failed, continuing without it")
+
+    # Flattens UI mockup screenshots (the shadow+content overlapping-
+    # image pair pattern used throughout this project's source PDFs,
+    # plus any vector borders/fills drawn on top of them, plus any
+    # callout badge whose vertical span overlaps the mockup's) into a
+    # single raster image per mockup. Without this, some -- not all,
+    # and not predictably which -- of a mockup's vector borders
+    # (dropdown focus outlines, button fills) come out blank in the
+    # converted DOCX even on a single-page conversion with no merge
+    # involved. No reliable geometric predictor for which borders
+    # would fail was found despite investigation (see
+    # flatten_mockup_dialogs' docstring in pdf_text_filter.py), so
+    # this is applied unconditionally to every detected mockup region
+    # rather than only to ones suspected to be at risk.
+    #
+    # Runs BEFORE flatten_callout_annotations -- this ordering is
+    # required, not arbitrary. flatten_mockup_dialogs absorbs any
+    # callout whose vertical span overlaps a mockup's into that same
+    # flattened region (see its docstring for why: a wide mockup with
+    # callouts stacked down its sides otherwise gets corrupted by
+    # pdf2docx in a way distinct from the missing-border problem).
+    # Once a callout is folded into a mockup region and redacted away
+    # as part of this pass, flatten_callout_annotations running
+    # afterward simply finds nothing left there for that specific
+    # callout and leaves it alone, while still independently handling
+    # every callout that ISN'T near a mockup (the much more common
+    # case). Running them in the opposite order would let
+    # flatten_callout_annotations flatten those callouts as separate
+    # small images first, defeating the absorption this pass relies
+    # on to avoid the repeated-image bug.
+    try:
+        pdf_bytes = flatten_mockup_dialogs(pdf_bytes)
+    except Exception:
+        logger.exception("flatten_mockup_dialogs failed, continuing without it")
+
+    # Flattens numbered/lettered callout badges (small filled box +
+    # white digit + connector arrow, used throughout step-by-step
+    # screenshots) into raster images. Without this, these callouts
+    # render correctly in isolation but get corrupted -- digit
+    # missing, box misplaced -- once docxcompose merges this page's
+    # single-page .docx with the rest of the document. See
+    # flatten_callout_annotations' docstring in pdf_text_filter.py for
+    # the full investigation. Runs after flatten_mockup_dialogs for the
+    # ordering reason explained above; any callout already absorbed
+    # into a mockup region by that pass has nothing left here to find.
+    try:
+        pdf_bytes = flatten_callout_annotations(pdf_bytes)
+    except Exception:
+        logger.exception("flatten_callout_annotations failed, continuing without it")
 
     detection = detect_needs_ocr(pdf_bytes)
     total_pages = detection["total_pages"]
